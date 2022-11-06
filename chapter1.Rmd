@@ -1,13 +1,51 @@
-
 # About the project
 
-*Write a short description about the course and add a link to your GitHub repository here. This is an R Markdown (.Rmd) file so you should use R Markdown syntax.*
+## Initial feelings, expectations
+
+I am looking forward to the course for two reasons:
+
+* would like to get a structured introduction to how R is used for data science, as I have learnt this previously on my own and with much help from a friend of mine
+* hopefully learn some new features too
+
+Another initial impression of the course to me that the moodle page is rather verbose and chaotic and this hampers finding the necessary information and the assigned tasks. I hope that I will get used to this and will not miss any compulsary assignment.
+
+I have found the course in *Sisu* because I still needed one credit to my **Transferable skills** section.
+
+## Learning experience on the *R for Health Data Science*
+
+```{r echo = FALSE}
+sprintf("I've found the book interesting and well written. Naturally due to my previous experience in R, I was only skim-reading it. Nevertheless I have found some useful functionalities that I haven't used before. e.g.")
+```
+1. the usage of logical operators in the filter function `filter(year == 2020 | disease == COVID19)`
+2. I tend to forget how to dodge columns but I was reminded and produced some nice plots
+```{r echo = FALSE, include=FALSE}
+library(gapminder)
+library(plotly)
+library(tidyverse, quietly = TRUE, warn.conflicts = FALSE)
+gapdata2007 <- gapminder %>% 
+  filter(year == 2007)
+```
 
 ```{r}
-# This is a so-called "R chunk" where you can write R code.
-
-date()
-
+gapdata2007 %>% 
+  ggplot(aes(x = continent, y = lifeExp, fill = country)) +
+  geom_col(position="dodge") + theme(legend.position = "none") 
 ```
-The text continues here.
+
+3. I was not aware of the `percent()` function in tidyverse, it's much simpler than `sprintf(%2.1f%%)`.
+4. It was nice to learn that with `plotly` and `html` output of Rmarkdown one can create interactive htmls (as one can hover over the diagram below to highlight countries).
+
+```{r}
+plot = gapdata2007 %>% 
+  ggplot(aes(x = gdpPercap, y = lifeExp, color = continent, label = country)) +
+  geom_point()
+  
+ggplotly(plot)
+```
+
+## Link to my pages
+
+[The repository](https://github.com/szkabel/IODS-project)
+
+[and the webpage](https://szkabel.github.io/IODS-project/)
 
