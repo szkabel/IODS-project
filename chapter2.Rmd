@@ -1,13 +1,100 @@
-# Insert chapter 2 title here
+# Regression analysis
 
+## Task description
 *Describe the work you have done this week and summarize your learning.*
 
 - Describe your work and results clearly. 
 - Assume the reader has an introductory course level understanding of writing and reading R code as well as statistical methods.
 - Assume the reader has no previous knowledge of your data or the more advanced methods you are using.
 
-```{r}
-date()
+## Analysis
+
+### Data characteristics
+
+We got data on some sort of questionnaire responses from individuals and their results on some sort of test (exam). The questionnaire seems to refer to study habits. The origin of the data cannot be clearly identified from the metadata provided.
+
+```{r include = F}
+# Data load
+  library(tidyverse)
+  library(magrittr)
+  library(GGally)
 ```
 
-Here we go again...
+```{r message=FALSE}
+  df = as_tibble(read.csv('http://www.helsinki.fi/~kvehkala/JYTmooc/JYTOPKYS3-data.txt', sep = '\t'))
+  
+  learning2014 = read_csv('data/learning2014.csv') %>% 
+    rename(points = Points, attitude = Attitude)
+```
+
+The original raw data consists of `r dim(df)[1]` records and `r dim(df)[2]` variables. After summarizing some questions into groups (such as questions referring to in-depth studying into a "depth" group) by taking their mean and removing observations with 0 points the processed data consists of `r dim(learning2014)[1]` observations and `r dim(learning2014)[2]` variables. Information on the data structure can be found below.
+
+``` {r}
+  str(learning2014)
+```
+### Graphical overview
+
+Let's have a look at the distribution of variables in this data by plotting them pairwise on a scatter plot. The figure below provides detailed insight into this data. We suspect that there are differences in the male and female participants hence we stratify the data into these two groups by colors.
+
+``` {r}
+  colMap = c("F" = "#FF5555", "M" = "1100EE")
+  # create a more advanced plot matrix with ggpairs()
+  ggpairs(learning2014, mapping = aes(color = gender, alpha = 0.3), lower = list(combo = wrap("facethist", bins = 20)),
+           upper = list(continuous = wrap("cor")) ) +
+    scale_color_manual(values = colMap) +
+    scale_fill_manual(values = colMap)
+```
+
+We can read several pieces of information from the plot. First there were almost 1.5 times more females (red) in the study than males (blue) as can be seen by the barchart on the top-right. Based on the boxplots on the top the males attitude was higher towards statistics however there were no huge difference between the points of males and females based on gender. Nevertheless the positive correlation between attitude and points is observable for both males and females.
+
+### Regression model
+
+In a linear regression analysis we are searching for a linear relationship between a predictor (feature) variable and an expected target outcome. Let's pick 3 that are the most likely candidates based on the previous plot: 
+
+```{r}
+my_model <- lm(points ~ attitude + stra + surf, data = learning2014)
+
+# print out a summary of the model
+summary(my_model)
+
+```
+The results show that the attitude is significantly useful when predicting the exam points as the p-value for the slope of this variable is very low ($1.93*10^{-8}$). The F-statistic of the test also indicates that at least one of the selected variables has non-zero slope.
+
+The t-test for each variable has the null-hypothesis that the slope of that variable in the regression equation is 0. If that is true then there is no association between the variable and the target. If the p-value is low then the result is unlikely under the null-hypothesis so usually we reject it i.e. we believe that there is association.
+
+So fit the model again only with attitude (as that was the only one showing significance)
+
+### Interpret regression parameters
+```{r}
+my_model <- lm(points ~ attitude, data = learning2014)
+
+# print out a summary of the model
+summary(my_model)
+
+```
+The summary of this model shows that there is a positive correlation (with a slope of 3) between the attitude results and exam points. In lay terms this means that 1 unit increase in the attitude reflects more or less 3.5 points increase in the exam results. In addition to this there is a baseline of 11.6 for those with the lowest attitudes. The multiple R squared value gives the proportion of variation that is explained by the variables in the model. In this case it is 0.1906, so a little less than 20\% of the variation is explained by the explanatory variable meaning that there are significant other factors affecting the exam results that we are omitting here.
+
+### Graphical model interpretation
+
+```{r}
+par(mfrow = c(2,2))
+plot(my_model, which = c(1,2,5))
+```
+
+The linear regression model assumes that the observations are produced by a linear model from the explanatory variable and there is additive noise with normal distribution (0 expected value) to these. The residuals represent this normal distribution, hence it's good to check how normal these are, and if the residual values are independent of the "x" location (in other case the noise would be dependent on the observation). The first two plots refer to this. On the first one we can see that the residuals are evenly distributed over the fitted values. The Q-Q plot shows that the quantiles of the residual distribution are very close to the quantiles of a normal distribution. The last "Residuals vs. Leverage" plot indicates which variables may have the greatest effect on the parameters (it is also known that linear regression is outlier-prone), hence it could be useful to check of the model improves a lot by removing those observations.
+
+### Prediction
+
+Beyond explaining the data linear regression models can be also used to predict unobserved results such as below.
+
+```{r}
+new_attitudes <- c("Mia" = 3.8, "Mike"= 4.4, "Riikka" = 2.2, "Pekka" = 2.9)
+new_data <- data.frame(attitude = new_attitudes)
+
+# Print out the new data
+new_data
+
+# Predict the new students exam points based on attitude
+predict(my_model, newdata = new_data)
+```
+
