@@ -1,0 +1,96 @@
+# Logistic regression
+
+## 1. Create the file
+
+As one can see it.
+
+## 2. Data characteristics
+
+We got data on student performances at school, including Grades, number of previous class failures and connected background information such as family status, alcohol consumption etc. We had information from 2 classes: Math and Portugese. To create a joint dataset we round-averaged the grades from these 2 classes and included only students that were present in both classes (at least based on their attributes, the table does not contain unique student identifiers causing possible confusions).
+
+```{r include = F}
+# Data load
+  library(tidyverse)
+  library(magrittr)
+  library(GGally)
+  library(gridExtra)
+```
+
+```{r message=FALSE}
+# Double check the data wrangling result
+  df_dc = as_tibble(read.csv('https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/alc.csv', sep = ','))
+  
+  df = read_csv('data/student_joint.csv')
+  #full_join(df,df_dc)
+  # ok. this is of same size, e.g the tables must agree.
+```
+
+After these operations there are `r dim(df)[1]` students with `r dim(df)[2]` variables in the data.
+
+``` {r}
+  str(df)
+```
+## 3. Hypothesis
+
+The 4 variables picked to examine if they have correlation with high alcohol consumption. Below I explain my a-priori expectations.
+
+- `studytime`: likely the less someone study the more time is available for consuming alcohol. It is unlikely that someone would use alcohol to mitigate stress coming from too much learning.
+- `activities`: the more activities someone does the less time they have for hanging out with bad student groups, I expect again negative correlation
+- `higher` (meaning higher education plans): Student's with cleaner future planning are less likely to be heavy alcohol consumers.
+- `freetime`: probably students with too much free-time will get more bored hence consumer more alcohol to make their life exciting.
+
+## 4. Verification
+``` {r}
+   p1 = df %>% ggplot() + aes(x = high_use, y = studytime, fill = high_use) + geom_violin()
+   p2 = df %>% ggplot() + aes(x = activities, fill = high_use) + geom_bar(position = "fill")
+   p3 = df %>% ggplot() + aes(x = higher, fill = high_use) + geom_bar(position = "fill")
+   p4 = df %>% ggplot() + aes(x = high_use, y = freetime, fill = high_use) + geom_violin()
+   grid.arrange(p1,p2,p3,p4)
+```
+
+
+- The first violin-plot shows that studytime is affecting the high alcohol usage in such a way that those who study a lot are less likely to be high alcohol users, however there are exceptions. For shorter study hours there seems to be no big difference in the distribution of high and low alcohol users. My hypothesis was not exactly this, but along these lines. It is not necessary that little studying causes high alcohol consumption but a lot of study hours seems to prevent it.
+- Regarding extra-curricular activities, there is a slight  increase of the proportion of high alcohol users in the no-hobby group, but this doesn't look very significant. This is again in line with my hypothesis but the effect is much smaller.
+- Regarding the higher education plans there is a clear correlation: in the group planning further education the proportion of high alcohol users is much smaller than in the other group. This is in line with my hypothesis.
+- Freetime is in some sense complementary to studytime, and the difference is also reflected here. Similarly, a lot of freetime doesn't necessarily mean high alcohol usage, but very little free time seems to prevent it. As in case 1, this was not my hypothesis exactly, but some sort of inversion of it.
+
+
+## 5. Logistic regression
+
+```{r}
+  m = glm(high_use ~ studytime + activities + higher + freetime, data = df, family = "binomial")
+
+  summary(m)
+```
+The model suggests that the studytime and freetime variables are statistically significantly useful for predicting high-low alcohol usage. It is interesting that the higher education prediction is not significant, but I double checked the data, and it is severely skewed towards students planning higher education (16 students not planning while 354 planning). This means that this variable has not much affect on predicting the higher education planning but yet high alcohol consumers. The categorical variables (activities and higher) were converted internally to "dummy" representative levels. As there was only 2 levels in both cases only 1 dummy variable was created.
+
+## 6. Prediction evaluation
+```{r}
+coef(m)
+
+exp(coef(m))
+```
+The coefficients represent the correlation between the variable and the output, the sign represents the shape of the logistic function, i.e. negative coefficient means that higher value (e.g. studytime) results in lower output (i.e. no high alcohol usage). In the exponential form these represent odds ratios for the unit change, in other words associating the variable's importance in effecting the model. Values close to 1 would have no effect, deviations in either direction shows that the variable is important for the prediction.
+
+```{r}
+confint(m)
+```
+These are 95% confidence intervals. It is usually understood that if these are not containing 0 then it is a significant result and indeed this matches with the significance table of the model. The results are matching with my hypothesis except for the higher education variable but that is explained by the skewing.
+
+```{r}
+# Use only the significant variables
+  m2 = glm(high_use ~ studytime + freetime, data = df, family = "binomial")
+  probabilities <- predict(m2, type = "response")
+  
+  df %<>% mutate(probability = probabilities)
+  df %<>% mutate(prediction = if_else(probability>0.5,TRUE,FALSE))
+  
+  # tabulate the target variable versus the predictions
+  tt = table(high_use = df$high_use, prediction = df$prediction)
+  
+  tt
+```
+This table is also called the confusion matrix. The usual metrics calculated from this table are the precision (TP/(TP+FP)) that is `r tt["TRUE","TRUE"]/(sum(tt[,"TRUE"]))`. This is pretty bad. Another common metric is recall (TP/(TP+FN)) that is `r tt["TRUE","TRUE"]/(sum(tt["TRUE",]))` that is almost 0. Accuracy (the correct preddiictions / total predictions) was a bit better: `r sum(diag(tt))/sum(tt)`. The training error is naturally 1-accuracy i.e. `r 1-sum(diag(tt))/sum(tt)`. This model performs pretty bad on predicting the high alcohol users, but pretty good on predicting the actually non high consumers. Simple guessing (without any other knowledge) should give a value around 0.5 hence this model is still a little better than random guess.
+
+
+
