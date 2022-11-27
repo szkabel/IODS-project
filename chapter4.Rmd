@@ -1,0 +1,157 @@
+# Clustering and classification
+
+## 1-2. Data characteristics
+
+```{r include = F}
+# Data load
+  library(magrittr)
+  library(GGally)
+  library(corrplot)
+  library(MASS)
+  library(tidyverse)
+```
+
+```{r message=FALSE}
+  # load the data
+  data("Boston")
+  df = as_tibble(Boston)
+
+```
+
+In this exercise we are working with a dataset that is readily available in the MASS (Modern Applied Statistics with S) package of R and contains socio-economic features of Boston suburbs. More info on the data can be found at: [https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/Boston.html](https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/Boston.html). The raw data consists of `r dim(df)[1]` records that refer to different suburbs and `r dim(df)[2]` variables including for instance the crime rate of the town, the average age of buildings etc.
+
+``` {r}
+  str(df)
+```
+## 3. Graphical overview
+
+Let's have a look at the distribution of variables in this data by plotting them pairwise on a scatter plot.
+
+``` {r}
+  p = ggpairs(df, lower = list(combo = wrap("facethist", bins = 20)),
+           upper = list(continuous = wrap("cor", size = 2)) ) +
+  theme(text = element_text(size = 8), axis.text.x = element_text(angle = 45))
+
+  p
+  # It's a bit hard to see with the ggpairs in this case, however more informative then the simple corrplot.
+  
+  cor_matrix <- cor(df) 
+
+  corrplot(cor_matrix, method="circle")
+```
+
+The variables follow various distributions. For instance the `crim` variable that encodes for crime rates in town seems to follow some sort of power distribution, i.e. there are some suburbs with very high crime rates and then the others are rather low. On the other hand the `rm` variable that encodes room number clearly has a normal distribution centered around 6 rooms per dwelling (that feels a bit too high though). Yet again, `indus` and `tax` that encode for "proportion of non-retail business" i.e. how industrialized a town is and "full-value property tax rate" respectively, seem to have a bi-modal distribution suggesting that for instance there the industrialized suburbs separate from the living quarters.
+
+One of the strongest correlation is related to this industrial variable, it is negatively correlated to the `dis` variable that measures "weighted mean of distances to five Boston employment centres." This makes sense, likely the industrialized (including also likely white collar businesses) areas are employment centers, so the less industrialized a district is the further away it is from these employment centers. The nitrogen oxid concentration is strongly positively correlated to this distance meaning that these employment centers are not high in NO concentration, suggesting that the employment centers in boston are high-tech, non-polluting industries.
+
+## 4. Scaling
+
+As all of these variables are continuous let's scale them to have 0 mean and 1 standard deviation, by
+
+$$scaled(x) = \frac{x - mean(x)}{ sd(x)}$$
+
+```{r}
+df_scaled = as_tibble(scale(df))
+summary(df_scaled)
+```
+As it was expected the means became 0.
+
+```{r}
+bins = quantile(df_scaled$crim)
+
+# create a categorical variable 'crime'
+df_scaled %<>% {mutate(.,crim = cut(.$crim, breaks = bins, include.lowest = TRUE))}
+
+table(df_scaled$crim)
+# The uniform distribution makes sense, as we divided by quantiles.
+
+n = nrow(df_scaled)
+ind = sample(n,  size = n * 0.8)
+train = df_scaled[ind,]
+test = df_scaled[-ind,]
+
+correct_classes = test$crim
+test %<>% dplyr::select(-crim)
+```
+
+## 5. LDA model
+
+```{r}
+lda.fit <- lda(crim ~ ., data = train)
+
+lda.arrows <- function(x, myscale = 1, arrow_heads = 0.1, color = "red", tex = 0.75, choices = c(1,2)){
+  heads <- coef(x)
+  arrows(x0 = 0, y0 = 0, 
+         x1 = myscale * heads[,choices[1]], 
+         y1 = myscale * heads[,choices[2]], col=color, length = arrow_heads)
+  text(myscale * heads[,choices], labels = row.names(heads), 
+       cex = tex, col=color, pos=3)
+}
+
+# target classes as numeric
+classes <- as.numeric(train$crim)
+
+# plot the lda results
+plot(lda.fit, dimen = 2, col = classes, pch = classes)
+lda.arrows(lda.fit, myscale = 1)
+
+```
+
+The LDA suggests that the "access to radial highways" `rad` is positively correlated with the highest crime-rate group.
+
+## 6. Prediction
+
+```{r}
+lda.pred <- predict(lda.fit, newdata = test)
+
+# cross tabulate the results
+table(correct = correct_classes, predicted = lda.pred$class)
+
+```
+
+The confusion matrix shows that this model is pretty good in predicting the correct crime rate, the highest values are found in the diagonal. It is also visible that the easiest is to predict the highest crime rate (blue color on the LDA plot), as the LDA transformation has separated that group the best from others. The 3 lower crime group rate are more mixed hence more errors are made during the prediction.
+
+## 7. K-means clustering
+
+```{r}
+# We don't need reload just do this again
+df_scaled = as_tibble(scale(as_tibble(Boston)))
+dist_eu = dist(df)
+# I'm a bit confused, I don't think this is needed for the k-means function, but the assignment requires to calculate it. I think k-means will do this on its own.
+
+km = kmeans(df_scaled, centers = 4)
+
+pairs(df_scaled, col = km$cluster)
+
+```
+
+Not much is visible on these figures. I unfortunately tend to see 2 clusters mostly along the `black` variable suggesting segregation in this area.
+
+```{r}
+set.seed(123)
+
+# Let's not overdo it, k-means is a fairly expensive technique
+k_max <- 10
+twcss <- sapply(1:k_max, function(k){kmeans(df_scaled, k)$tot.withinss})
+
+# visualize the results
+qplot(x = 1:k_max, y = twcss, geom = 'line')
+km <- kmeans(df_scaled, centers = 2)
+p = ggpairs(df_scaled %>% mutate(cluster = as_factor(km$cluster)), mapping = aes(color = cluster, alpha = 0.3), lower = list(combo = wrap("facethist", bins = 20)),
+           upper = list(continuous = wrap("cor", size = 2)) )
+p
+
+```
+
+Indeed, based on the dropping WCSS (within cluster sum of squares, a measure of coherency within a cluster, but note: clustering is by definition dubious!) two clusters is a good number in this data, and it reveals segregated societal groups (districts) with clear separation in crime rates and lower status of the population (`lstat`). It's interesting that the nitrogen-oxid pollution is actually better for the group with lower status. The lower status obviously pays less taxes (connected to likely less income), lives in older houses. The most intersting is the distribution of the average room numbers, the joint normal distribution is composed of two kindof "heavy-tailed" distribution to opposite directions: the lower status with fewer rooms, and the upper status with more rooms.
+
+I personally like PCA so let's visualize also with that (even though this is not listed as an extra point exercise)
+```{r}
+ pco = prcomp(df_scaled)
+
+pco$x %>% as_tibble() %>% mutate(cluster = as_factor(km$cluster)) %>% ggplot() +
+  aes(x = PC1, y = PC2, color = cluster) +
+  geom_point()
+```
+
+And indeed: PC1 picks up exactly the same difference what was achieved with clustering, however suggests that the separation is not binary in the full data (there are features that mix these societes together).
