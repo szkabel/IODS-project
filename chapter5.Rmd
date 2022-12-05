@@ -71,7 +71,7 @@ tea <- as_tibble(read.csv("https://raw.githubusercontent.com/KimmoVehkalahti/Hel
 
 str(tea)
 
-tea_time = tea %>% select(c("Tea", "How", "how", "sugar", "where", "lunch"))
+tea_time = tea %>% dplyr::select(c("Tea", "How", "how", "sugar", "where", "lunch"))
 
 #View(tea) # I'd rather not use it in the RMarkdown
 # Just visualize
