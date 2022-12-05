@@ -1,0 +1,94 @@
+# Dimensionality reduction
+
+## 1. Data characteristics
+
+```{r include = F}
+# Data load
+  library(magrittr)
+  library(GGally)
+  library(corrplot)
+  library(MASS)
+  library(tidyverse)
+  library(FactoMineR)
+
+```
+
+```{r message=FALSE}
+  # load the data
+  df = read.csv('data/human2.csv',row.names = 1)
+  # This is how the rowname headers are read back
+
+  ggpairs(df)  
+  summary(df)
+```
+
+In this exercise we are working with countries and data related to their human development. The data consists of `r dim(df)[1]` observations over `r dim(df)[2]` variables.
+The variables are all continuous but have various distributions, e.g. the expected years of education `Edu.Exp` is rather normal, whilst the Gross National Income (GNI) is more like a power distribution. Some variables are positively (e.g. expected years of education and life expectancy) and some are negatively (e.g. life expectancy and adolescent birth rate) correlated.
+
+## 2. Principal component analysis
+
+```{r}
+pca_human = prcomp(df)
+
+biplot(pca_human, choices = 1:2, cex = c(0.5, 0.8), xlab = 'Gross national income')
+
+# Explained variance proportion
+sprintf('%.2f%% ',pca_human$sdev^2/sum(pca_human$sdev^2)*100)
+# Can be seen also in
+summary(pca_human)
+
+```
+
+## 3. Standardized PCA
+
+```{r}
+df_std = scale(df)
+pca_human = prcomp(df_std)
+
+biplot(pca_human, choices = 1:2, cex = c(0.5, 0.8), xlab = 'Human development', ylab = 'Gender equality')
+
+# Explained variance proportion
+sprintf('%.2f%% ',pca_human$sdev^2/sum(pca_human$sdev^2)*100)
+# Can be seen also in
+summary(pca_human)
+
+```
+
+The results are clearly different. In the non-standardized case the first principal component accounts for almost 100\% of the variation. This coincides with the GNI, as without normalization it's values are overpowered over other variables. However in the normalized case the variables contribute more equally to the principal components. Moreover the plot seems to meaningfully cluster countries, e.g. the Nordic countries are grouped on the top-left, and indeed their human development is rather similar. I added my interpretation to the axis labels, however note that the directionality of PC is not well defined and the axes could be equally well mirrored. Specifically, even though I named PC1 as human development (in the scaled case), but actually the human development is decreasing from left to right.
+
+## 4. Interpretations
+I have already given my interpretation briefly by naming the axes above. 
+
+- PC1 seems to pick up human development differences such as state of education, life expectancy or the severeness of maternal mortality.
+- PC2 seems to differentiate countries based on gender equality (showed by the variables of labour market share and parliementary representation of women). Indeed there may be countries that are developed however female rights are not meeting liberal standards (e.g. Qatar, just think about the World Cup scandals).
+
+## 5. Multiple correspondance analysis (Tea)
+
+In this exercise we will work with another dataset on human participants' tea consumption habits.
+
+```{r}
+tea <- as_tibble(read.csv("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/tea.csv", stringsAsFactors = TRUE))
+
+str(tea)
+
+tea_time = tea %>% select(c("Tea", "How", "how", "sugar", "where", "lunch"))
+
+#View(tea) # I'd rather not use it in the RMarkdown
+# Just visualize
+pivot_longer(tea_time, cols = everything()) %>% 
+  ggplot(aes(value)) + facet_wrap("name", scales = "free") +
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8))
+
+```
+
+The data consists of `r dim(tea)[1]` observations and `dim(tea)[2]` variables.
+
+```{r}
+mca = MCA(tea_time, graph = TRUE)
+
+summary(mca)
+
+```
+
+If two variables appear close on the variable representation plot it means that those properties seem to cluster / differentiate the participants. This is expanded on the MCA factor map, where one can see that people drinking tea in tea shops are drinking unpackaged tea that makes sense. However if someone is getting from the chain store then it's more likely to buy it in tea bag.

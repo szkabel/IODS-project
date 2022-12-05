@@ -1,5 +1,8 @@
 # Abel Szkalisity
 # Data wrangling for week 5 (part of week 4 exercises)
+# Continued data wrangling on week 5.
+
+# ************** WEEK 4 ************** ----
 
 library(tidyverse)
 library(magrittr)
@@ -53,3 +56,40 @@ dim(human)
 # 195 19, this is correct
 human %>% write_csv('data/human.csv')
 
+# ************** WEEK 5 ************** ----
+# Continued wranling
+
+human = read_csv('data/human.csv')
+
+# The data contains various social features of countries of the world including Humen development index (HDI) ,
+# the proportion of women in parliement, the participation of sexes in the labour market etc.
+# For complete explanation see the rows above where the longer variable names were reduced to the short forms.
+# It contains altogether 19 variables on 195 countries
+
+# 1 GNI mutation
+# Well, by using the tidyverse functions the GNI is already in numeric (well double, but double is numeric) form
+# so nothing to be done here
+is.numeric(human$GNI)
+
+human2 = read.table("https://raw.githubusercontent.com/KimmoVehkalahti/Helsinki-Open-Data-Science/master/datasets/human1.txt", 
+                              sep =",", header = T)
+all(as.integer(str_replace(human2$GNI,',','')) == as.integer(human$GNI))
+
+# 2. exlude variables
+human %<>% select(Country, Edu2.FM,Labo.FM, Edu.Exp, Life.exp, GNI, Mat.Mor, Ado.Birth, Parli.F)
+
+# 3. remove missing data
+human %<>% filter(!apply(is.na(human),1,any))
+
+# 4. remove regions
+# After inpsecting the data the following rows are regions
+human %<>% filter(! Country %in% c("Arab States","East Asia and the Pacific","Europe and Central Asia","Latin America and the Caribbean","South Asia","Sub-Saharan Africa","World"))
+
+# 5. making rownames
+human %<>% column_to_rownames("Country")
+# I think we loose the tibble with this operation
+str(human)
+# 155 obs and 8 var, looks fine
+
+human %>% write.csv('data/human2.csv')
+# I prefer to name it differently
