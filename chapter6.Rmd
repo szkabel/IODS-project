@@ -1,0 +1,170 @@
+# Analysis of longitudinal data
+
+This week we are recreating analysis from Chapter 8 and 9 of the MABS book, but **swapping** the datasets.
+
+## 1. Graphical displays and summary measures on Rats data
+
+### 1-A) Import data
+```{r include = F}
+# Data load
+  library(magrittr)
+  library(tidyverse)
+
+```
+
+```{r message=FALSE}
+  # load the data
+  rats = read_csv('data/rats_long.csv')
+  str(rats)
+```
+
+The rats data contains weekly measurements (over 9 weeks but not always just once a week) of the weight of 16 rats categorized into 3 treatment groups. This leads altogether to 11x16 = `r 11*16` observations. I will use the words *treatment*, *group* and *diet* interchangeably.
+
+Let's create the factor variables again.
+
+```{r}
+rats %<>% mutate(across(c(ID,Group,Time),as_factor))
+
+# Double check that the Time variable is increasing in the levels
+rats$Time
+```
+
+### 1-B) Visual displays
+
+**RAW DATA**
+
+```{r}
+rats %>% ggplot() +
+  aes(x = Time, y = Weight, color = ID, group = ID) + geom_line() +
+  facet_wrap(~Group) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+```
+
+The facets represent treatments. One can observe that especially in treatment group 2 and 3 the weights of the rats is greatly increasing. Even in treatment 1 (which is likely the control group) one can observe a small increase over time, but note also that these were starting from much lower levels suggesting that those rats were younger (lighter) at the start of the experiment, and this slight increase may be just the general weight-gain during development of adulthood.
+
+**STANDARDIZATION**
+
+It is clearly visible in this plot that individual variation makes it harder to compare the differences between individuals so some sort of standardization is needed. I note here that I think that the used standardization in the MABS book is not the best way to standardize. It is clear for instance that group 2 and 3 rats have started from a much higher weight so of course those treatments (which are diets by the way) would be different from diet 1. If these rats were grown on similar diets *before* the start of the experiment then I think we should normalize each subject to its individual Day 1 weight. I'll follow this approach, as even though there is no Day 0 observation it is highly unlikely thatthe Day 1 differences are caused by only 1 day of living on the given diet.
+
+```{r}
+rats %<>% group_by(ID) %>% 
+  mutate(weightRef = Weight[1], stdWeight = Weight/weightRef) %>% 
+  dplyr::select(-weightRef)
+  
+rats %>% ggplot() +
+  aes(x = Time, y = stdWeight, color = ID, group = ID) + geom_line() +
+  facet_wrap(~Group) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+```
+
+In this standardized plot everyone is starting from it's own reference and we see the body weight increase and decrease proportionally to that. The subject experiencing the biggest increase in treatment 2 have gained 20\% extra weight during the study. Again, I think this is a fairer comparison that dividing by the observations day's mean if we are interested in the individual effect of diets.
+
+Let's visualize this standardized weight on a box-plot stratified by treatment group.
+
+```{r}
+  rats %>% ggplot() + 
+    aes(x = Time, y = stdWeight, color = Group) + geom_boxplot()
+```
+
+This plot reveals that the relative weight-gain of group 3 is always under the other groups. I tend to think that with the original standardization this would not be the case (as the absolute weight of group 3 is relatively high), and indeed that MABS book analysis of this data stated that Group 3 is growing more than group 2 (which is not true in my interpretation). It is interesting to see how Group 1 and 2 start to grow similarly but then around Day 50 the growth of group 2 is taking clearly over.
+
+**SUMMARY MEASURES**
+
+Based on this normalized plot and observations above a useful measure could be the difference between the last and first day observation (growth data for eventual value), but the delayed response (time to reach a given weight) would be also very interesting, especially to describe the joint move of group 1 and 2 in the beginning, the increased growth of group 2 in the end, and seemingly also that group 3 catches up in the end with group 2. However as some rats don't ever grow more than 10% of their weights it'd be tedious to define such measure (but in a real data analyses I would do that). The regression slopes could be used too, but let's keep those for part II. Based on this, let's move on with the difference measures.
+
+```{r}
+  rats_summ = rats %>% mutate(diffWeight = stdWeight[Time == "WD64"] - stdWeight[Time == "WD1"]) %>% 
+  summarize(Group = unique(Group), diffWeight = mean(diffWeight))
+  rats_summ %>% ggplot() + aes(x = Group, color = Group, y = diffWeight) + geom_boxplot() + 
+  ylab("Relative weight gain WD64-WD1")
+```
+
+**OUTLIER REMOVAL**
+
+I am not a big fan of outlier removal (it sounds like fishing in the data for our desired effects), so I will not perform it here. The boxplots above are anyways not indicative of huge outlier effects, the only outlier point is in group 1 namely
+
+```{r}
+rats_summ %>% filter(Group == 1, diffWeight>0.15)
+```
+rat no. 1. One could remove it, but I don't think it'll ruin the downstream analysis.
+
+**T-TEST**
+
+Let's perform pairwise t-tests on the groups.
+
+```{r}
+library(rstatix)
+
+rats_summ %>% pairwise_t_test(
+    diffWeight ~ Group, paired = FALSE,
+    p.adjust.method = "fdr"
+  )
+```
+
+Despite our observations the differences are non-significant for any pairs. One could increase the sample numbers, or pick a better summary statistic. As expected the smallest p-value is between group 2 and 3 that we identified as over-fed or under-fed groups. Let's do a final try with the linear model fitting:
+
+```{r}
+fit = rats %>% summarize(Group = unique(Group), baseline = stdWeight[1], weightGain = stdWeight[Time == "WD64"]) %>% 
+  {lm(weightGain ~ baseline + Group, data = .)}
+
+anova(fit)
+```
+
+This is still not significant (but I was not expecting it, as the techniques are very similar in these two cases, and I have taken the baseline already into account during normalization).
+
+## 2. Linear Mixed Effects models
+
+### 2-A) Import data
+
+In this exercise part we'll deal with the the BPRS (brief psychological response scale) measurements.
+
+```{r}
+bprs = read_csv('data/bprs_long.csv')
+str(bprs)
+```
+
+The bprs data contains weekly measurements (over 9 weeks including the start of the experiment) of the BPRS of 40 individuals categorized into 2 treatment groups. This leads altogether to 40x9 = `r 40*9` observations. I will use the words *treatment* and *group* interchangeably.
+
+Let's create the factor variables again.
+
+```{r}
+bprs %<>% mutate(across(c(subject,treatment,Week),as_factor))
+
+# Double check that the Week variable is increasing in the levels
+levels(bprs$Week)
+```
+### 2-B) Glimpse on the data
+
+Let's visualize the data on graphs
+
+```{r}
+  bprs %>% ggplot() + 
+    aes(x = Week, y = BPRS, color = subject, group = subject) +
+    geom_line() +
+    facet_wrap(~treatment) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1))
+```
+
+### 2-C) Linear models
+
+As described in the book, the BPRS measurements are constantly decreasing over time. Let's do a regression model out of the box (without normalization).  The intercept terms should take care of individual differences.
+
+**BASIC LINEAR MODEL**
+
+```{r}
+  bprs_reg = lm(BPRS ~ Week + treatment, data = bprs)
+  summary(bprs_reg)
+```
+
+The summary indicates that the treatment variable do not have a significant effect on the outcome. However the passing of time makes a significant difference as shown by the Week values. This model has assumed independence which is probably not true in this case (the subjects are the same over time so likely they are not independent).
+
+**RANDOM INTERCEPT MODEL**
+
+```{r}
+  library(lme4)
+  bprs_ref <- lmer(BPRS ~ Week + treatment + (1 | subject), data = bprs, REML = FALSE)
+  summary(bprs_ref)
+```
+
+This indicates also no significant effect of the treatment on the BPRS outputs.
+
