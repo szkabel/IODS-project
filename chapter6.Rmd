@@ -168,3 +168,24 @@ The summary indicates that the treatment variable do not have a significant effe
 
 This indicates also no significant effect of the treatment on the BPRS outputs.
 
+**RANDOM SLOPE MODEL**
+
+```{r}
+  bprs_refslope <- lmer(BPRS ~ Week + treatment + (Week | subject), data = bprs, REML = FALSE)
+  summary(bprs_refslope)
+  
+  anova(bprs_ref,bprs_refslope)
+```
+
+Even the addition of the time variable to the random effects cannot make a difference between the groups.
+
+**RANDOM INTERCEPT AND SLOPE WITH INTERACTION MODEL**
+
+```{r}
+  bprs_refslopeinteract <- lmer(BPRS ~ Week * treatment + (Week | subject), data = bprs, REML = FALSE)
+  summary(bprs_refslopeinteract)
+  
+  anova(bprs_refslope,bprs_refslopeinteract)
+```
+
+Based on the Chi-squared test this model is the closest to the actual values, but it is still far from ideal. I conclude that there are no changes between the groups.
